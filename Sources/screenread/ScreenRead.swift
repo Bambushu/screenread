@@ -24,6 +24,9 @@ struct ScreenRead: ParsableCommand {
     @Flag(name: .long, help: "List all windows")
     var list = false
 
+    @Option(name: .long, help: "Search for text across all open windows")
+    var find: String?
+
     // Output
     @Flag(name: .long, help: "Output as JSON")
     var json = false
@@ -62,6 +65,48 @@ struct ScreenRead: ParsableCommand {
 
     mutating func run() throws {
         let resolver = TargetResolver()
+
+        // Handle --find
+        if let query = find {
+            guard !query.isEmpty else {
+                throw ValidationError("--find requires a non-empty search string")
+            }
+            let queryLower = query.lowercased()
+            var results: [String] = []
+            let maxResults = 100
+            var seenPIDs = Set<Int32>()
+
+            for app in resolver.listWindows() {
+                if results.count >= maxResults { break }
+                guard seenPIDs.insert(app.pid).inserted else { continue }
+
+                do {
+                    let element = try resolver.resolvePID(app.pid)
+                    let walker = AXTreeWalker(maxDepth: 10, includeRoles: nil, excludeRoles: nil, truncateAt: 500, timeoutSeconds: 3.0)
+                    let walkResult = walker.walk(element)
+                    guard case .tree(let tree) = walkResult else { continue }
+                    let text = Formatter.formatTextOnly(tree)
+                    for line in text.components(separatedBy: "\n") {
+                        if line.lowercased().contains(queryLower) {
+                            results.append("[\(app.app) — \(app.title)] \(line.trimmingCharacters(in: .whitespaces))")
+                            if results.count >= maxResults { break }
+                        }
+                    }
+                } catch {
+                    continue
+                }
+            }
+
+            if results.isEmpty {
+                print("No matches found for '\(query)'")
+            } else {
+                for line in results { print(line) }
+                if results.count >= maxResults {
+                    print("(limited to \(maxResults) results)")
+                }
+            }
+            return
+        }
 
         // Handle --list
         if list {
