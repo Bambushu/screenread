@@ -149,6 +149,36 @@ let tools: [[String: Any]] = [
             "additionalProperties": false,
         ] as [String: Any],
     ],
+    [
+        "name": "screenread_clickable",
+        "description": "List interactive elements (buttons, links, text fields) with their click coordinates. Returns a table with role, label, center x/y, and state.",
+        "inputSchema": [
+            "type": "object",
+            "properties": [
+                "app": ["type": "string", "description": "App name to read (e.g. 'Safari')"],
+                "window": ["type": "string", "description": "Fuzzy match on window title"],
+                "pid": ["type": "integer", "description": "Target by process ID"],
+                "roles": ["type": "string", "description": "Override default interactive roles (e.g. 'AXButton,AXLink')"],
+            ] as [String: Any],
+            "additionalProperties": false,
+        ] as [String: Any],
+    ],
+    [
+        "name": "screenread_watch",
+        "description": "Watch an app for UI changes over a duration. Polls the accessibility tree at an interval and reports additions, removals, and value/state changes.",
+        "inputSchema": [
+            "type": "object",
+            "properties": [
+                "app": ["type": "string", "description": "App name to watch (e.g. 'Safari')"],
+                "window": ["type": "string", "description": "Fuzzy match on window title"],
+                "pid": ["type": "integer", "description": "Target by process ID"],
+                "duration": ["type": "integer", "description": "How long to watch in seconds (default: 10, max: 60)"],
+                "interval": ["type": "integer", "description": "Poll interval in seconds (default: 2, min: 1)"],
+                "textOnly": ["type": "boolean", "description": "Compare text content only (default: false)"],
+            ] as [String: Any],
+            "additionalProperties": false,
+        ] as [String: Any],
+    ],
 ]
 
 // MARK: - Tool Execution
@@ -269,6 +299,138 @@ func executeFindText(_ params: [String: AnyCodable]?) -> ToolResult {
     return ToolResult(text: output, isError: false)
 }
 
+func executeClickable(_ params: [String: AnyCodable]?) -> ToolResult {
+    let resolver = TargetResolver()
+
+    do {
+        let target: AXUIElement
+        if let pid = params?["pid"]?.intValue {
+            guard let pid32 = Int32(exactly: pid) else {
+                return ToolResult(text: "Invalid PID: \(pid)", isError: true)
+            }
+            target = try resolver.resolvePID(pid32)
+        } else if let windowTitle = params?["window"]?.stringValue {
+            target = try resolver.resolveWindow(windowTitle)
+        } else if let appName = params?["app"]?.stringValue {
+            target = try resolver.resolveApp(appName)
+        } else {
+            target = try resolver.resolveFrontmost()
+        }
+
+        let roles: Set<String>? = params?["roles"]?.stringValue.map { Set($0.split(separator: ",").map(String.init)) }
+
+        let walker = AXTreeWalker(maxDepth: 5, includeRoles: nil, excludeRoles: nil, truncateAt: 500)
+        let result = walker.walk(target)
+
+        switch result {
+        case .tree(let tree):
+            let output = Formatter.formatClickable(tree, roles: roles)
+            return ToolResult(text: output, isError: false)
+        case .timedOut:
+            return ToolResult(text: "Timed out reading accessibility tree. Try a smaller depth or target a specific window.", isError: true)
+        case .empty:
+            return ToolResult(text: "Accessibility tree is empty. The app may not support accessibility or may need a moment to load.", isError: true)
+        }
+    } catch {
+        return ToolResult(text: "Error: \(error)", isError: true)
+    }
+}
+
+func executeWatch(_ params: [String: AnyCodable]?) -> ToolResult {
+    let resolver = TargetResolver()
+
+    let duration = min(params?["duration"]?.intValue ?? 10, 60)
+    let interval = max(params?["interval"]?.intValue ?? 2, 1)
+    let textOnly = params?["textOnly"]?.boolValue ?? false
+
+    let target: AXUIElement
+    var appName: String
+    do {
+        if let pid = params?["pid"]?.intValue {
+            guard let pid32 = Int32(exactly: pid) else {
+                return ToolResult(text: "Invalid PID: \(pid)", isError: true)
+            }
+            target = try resolver.resolvePID(pid32)
+            appName = "PID \(pid)"
+        } else if let windowTitle = params?["window"]?.stringValue {
+            target = try resolver.resolveWindow(windowTitle)
+            appName = windowTitle
+        } else if let name = params?["app"]?.stringValue {
+            target = try resolver.resolveApp(name)
+            appName = name
+        } else {
+            target = try resolver.resolveFrontmost()
+            appName = "frontmost app"
+        }
+    } catch {
+        return ToolResult(text: "Error: \(error)", isError: true)
+    }
+
+    // Walk baseline tree
+    let baseWalker = AXTreeWalker(maxDepth: 5, includeRoles: nil, excludeRoles: nil, truncateAt: 500)
+    let baseResult = baseWalker.walk(target)
+    let baseline: AXNode
+    switch baseResult {
+    case .tree(let tree):
+        baseline = tree
+    case .timedOut:
+        return ToolResult(text: "Timed out reading initial accessibility tree for \(appName).", isError: true)
+    case .empty:
+        return ToolResult(text: "Accessibility tree is empty for \(appName).", isError: true)
+    }
+
+    // Poll loop
+    var allChanges: [(Int, [TreeChange])] = []
+    var polls = 0
+    var elapsed = 0
+
+    while elapsed < duration {
+        Thread.sleep(forTimeInterval: Double(interval))
+        elapsed += interval
+        polls += 1
+
+        let walker = AXTreeWalker(maxDepth: 5, includeRoles: nil, excludeRoles: nil, truncateAt: 500)
+        let walkResult = walker.walk(target)
+
+        let currentTree: AXNode
+        switch walkResult {
+        case .tree(let tree): currentTree = tree
+        case .timedOut, .empty: continue
+        }
+
+        var changes = TreeDiffer.diff(old: baseline, new: currentTree)
+
+        if textOnly {
+            changes = changes.filter {
+                switch $0 {
+                case .changed(_, _, _, let field): return field == "title" || field == "value"
+                default: return true
+                }
+            }
+        }
+
+        if !changes.isEmpty {
+            allChanges.append((elapsed, changes))
+        }
+    }
+
+    let totalChanges = allChanges.reduce(0) { $0 + $1.1.count }
+
+    if allChanges.isEmpty {
+        return ToolResult(text: "No changes detected in \(appName) over \(duration)s (\(polls) polls)", isError: false)
+    }
+
+    var lines: [String] = ["Watched \(appName) for \(duration)s (\(polls) polls, \(totalChanges) changes)"]
+    for (ts, changes) in allChanges {
+        lines.append("")
+        lines.append("t=\(ts)s:")
+        for change in changes {
+            lines.append("  \(change.formatted)")
+        }
+    }
+    return ToolResult(text: lines.joined(separator: "\n"), isError: false)
+}
+
 // MARK: - Main Loop
 
 while let line = readLine() {
@@ -283,7 +445,7 @@ while let line = readLine() {
         sendResponse(request.id, [
             "protocolVersion": "2025-11-25",
             "capabilities": ["tools": ["listChanged": false]],
-            "serverInfo": ["name": "screenread", "version": "0.1.0"],
+            "serverInfo": ["name": "screenread", "version": "0.2.0"],
         ] as [String: Any])
 
     case "notifications/initialized":
@@ -315,6 +477,12 @@ while let line = readLine() {
             sendToolResult(request.id, text: result.text, isError: result.isError)
         case "screenread_find_text":
             let result = executeFindText(argsDict)
+            sendToolResult(request.id, text: result.text, isError: result.isError)
+        case "screenread_clickable":
+            let result = executeClickable(argsDict)
+            sendToolResult(request.id, text: result.text, isError: result.isError)
+        case "screenread_watch":
+            let result = executeWatch(argsDict)
             sendToolResult(request.id, text: result.text, isError: result.isError)
         default:
             sendError(request.id, code: -32601, message: "Unknown tool: \(toolName)")

@@ -8,7 +8,7 @@ import ApplicationServices
 struct ScreenRead: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Read the macOS accessibility tree from any application.",
-        version: "0.1.0"
+        version: "0.2.0"
     )
 
     // Target
@@ -47,6 +47,19 @@ struct ScreenRead: ParsableCommand {
     @Option(name: .long, help: "Comma-separated roles to exclude (e.g. AXGroup,AXScrollArea)")
     var ignore: String?
 
+    // Modes
+    @Flag(name: .long, help: "Output interactive elements with click coordinates")
+    var clickable = false
+
+    @Flag(name: .long, help: "Stream JSONL output (one JSON object per node per line)")
+    var stream = false
+
+    @Flag(name: .long, help: "Watch for changes (poll-based, Ctrl+C to stop)")
+    var watch = false
+
+    @Option(name: .long, help: "Poll interval in seconds for --watch (default: 2)")
+    var interval: Int = 2
+
     mutating func run() throws {
         let resolver = TargetResolver()
 
@@ -82,6 +95,107 @@ struct ScreenRead: ParsableCommand {
         // Parse role filters
         let includeRoles: Set<String>? = role.map { Set($0.split(separator: ",").map(String.init)) }
         let excludeRoles: Set<String>? = ignore.map { Set($0.split(separator: ",").map(String.init)) }
+
+        // --clickable mode
+        if clickable {
+            let walker = AXTreeWalker(
+                maxDepth: effectiveDepth,
+                includeRoles: includeRoles,
+                excludeRoles: excludeRoles,
+                truncateAt: full ? 0 : 500
+            )
+            let result = walker.walk(target)
+            switch result {
+            case .tree(let tree):
+                let effectiveRoles = includeRoles ?? Formatter.defaultInteractiveRoles
+                if json {
+                    print(Formatter.formatClickableJSON(tree, roles: effectiveRoles))
+                } else {
+                    print(Formatter.formatClickable(tree, roles: effectiveRoles))
+                }
+            case .timedOut:
+                let name = app ?? window ?? "app"
+                throw ScreenReadError.timeout(name)
+            case .empty:
+                throw ScreenReadError.emptyTree
+            }
+            return
+        }
+
+        // --stream mode
+        if stream {
+            let walker = AXTreeWalker(
+                maxDepth: effectiveDepth,
+                includeRoles: includeRoles,
+                excludeRoles: excludeRoles,
+                truncateAt: full ? 0 : 500
+            )
+            let result = walker.walk(target) { node, depth in
+                print(StreamFormatter.formatNodeAsJSONL(node, depth: depth))
+                fflush(stdout)
+            }
+            switch result {
+            case .tree:
+                break // nodes already printed via callback
+            case .timedOut:
+                let name = app ?? window ?? "app"
+                fputs("error: timed out reading \(name)\n", stderr)
+            case .empty:
+                fputs("error: empty accessibility tree\n", stderr)
+            }
+            return
+        }
+
+        // --watch mode
+        if watch {
+            let truncateAt = full ? 0 : 500
+            let makeWalker = {
+                AXTreeWalker(
+                    maxDepth: effectiveDepth,
+                    includeRoles: includeRoles,
+                    excludeRoles: excludeRoles,
+                    truncateAt: truncateAt
+                )
+            }
+
+            // Initial walk
+            let initialResult = makeWalker().walk(target)
+            guard case .tree(let initialTree) = initialResult else {
+                if case .timedOut = initialResult {
+                    let name = app ?? window ?? "app"
+                    throw ScreenReadError.timeout(name)
+                }
+                throw ScreenReadError.emptyTree
+            }
+
+            if textOnly {
+                print(Formatter.formatTextOnly(initialTree))
+            } else {
+                print(Formatter.formatTextTree(initialTree))
+            }
+            fflush(stdout)
+
+            var previousTree = initialTree
+
+            // Poll loop — Ctrl+C kills the process naturally
+            while true {
+                Thread.sleep(forTimeInterval: Double(interval))
+
+                let pollResult = makeWalker().walk(target)
+                guard case .tree(let newTree) = pollResult else { continue }
+
+                let changes = TreeDiffer.diff(old: previousTree, new: newTree)
+                if !changes.isEmpty {
+                    let timestamp = ISO8601DateFormatter().string(from: Date())
+                    print("--- \(timestamp) ---")
+                    for change in changes {
+                        print(change.formatted)
+                    }
+                    fflush(stdout)
+                }
+                previousTree = newTree
+            }
+        }
 
         // Walk tree
         let walker = AXTreeWalker(

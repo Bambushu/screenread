@@ -59,6 +59,41 @@ struct AXTreeWalkerTests {
         }
     }
 
+    @Test("At least one node has isEnabled populated")
+    func stateMetadataIsEnabled() throws {
+        let resolver = TargetResolver()
+        let appElement = try resolver.resolveFrontmost()
+        let walker = AXTreeWalker(maxDepth: 3, includeRoles: nil, excludeRoles: nil, truncateAt: 500)
+        let result = walker.walk(appElement)
+        guard case .tree(let root) = result else {
+            Issue.record("Should produce a tree")
+            return
+        }
+        func hasIsEnabled(_ node: AXNode) -> Bool {
+            if node.isEnabled != nil { return true }
+            return node.children.contains(where: hasIsEnabled)
+        }
+        #expect(hasIsEnabled(root), "At least one node in the tree should have isEnabled != nil")
+    }
+
+    @Test("onNode callback receives nodes during walk")
+    func onNodeCallback() throws {
+        let resolver = TargetResolver()
+        let appElement = try resolver.resolveFrontmost()
+        let walker = AXTreeWalker(maxDepth: 2, includeRoles: nil, excludeRoles: nil, truncateAt: 500)
+        var visitedNodes: [(String, Int)] = []
+        let result = walker.walk(appElement) { node, depth in
+            visitedNodes.append((node.role, depth))
+        }
+        guard case .tree = result else {
+            Issue.record("Should produce a tree")
+            return
+        }
+        #expect(!visitedNodes.isEmpty, "Callback should have been called at least once")
+        // onNode fires post-order (children before parent), so the root arrives last
+        #expect(visitedNodes.last?.1 == 0, "Last callback should be root at depth 0")
+    }
+
     @Test("Timeout returns .timedOut for very short timeout")
     func timeoutDetected() throws {
         let resolver = TargetResolver()
