@@ -62,6 +62,10 @@ screenread --app Terminal --full
 # JSON output
 screenread --app Safari --json
 
+# Search for text across all open windows
+screenread --find "error"
+screenread --find "Submit"
+
 # List all open windows
 screenread --list
 
