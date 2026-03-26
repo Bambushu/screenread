@@ -61,4 +61,47 @@ struct FormatterTests {
         let output = Formatter.formatTextTree(node)
         #expect(output.contains("[group]"))
     }
+
+    // MARK: - State Flags + Clickable Tests
+
+    let disabledButton = AXNode(role: "AXButton", title: "Delete", position: ["x": 400, "y": 300], size: ["width": 80, "height": 40], isEnabled: false)
+    let focusedField = AXNode(role: "AXTextField", title: "Search", value: "hello", position: ["x": 200, "y": 50], size: ["width": 200, "height": 30], isEnabled: true, isFocused: true)
+    let enabledButton = AXNode(role: "AXButton", title: "Submit", position: ["x": 440, "y": 310], size: ["width": 80, "height": 40], isEnabled: true)
+
+    var interactiveTree: AXNode {
+        AXNode(role: "AXWindow", title: "Test", children: [
+            disabledButton,
+            focusedField,
+            enabledButton,
+            AXNode(role: "AXStaticText", value: "Just text")
+        ])
+    }
+
+    @Test("Text tree shows state flags")
+    func textTreeStateFlags() {
+        let output = Formatter.formatTextTree(interactiveTree)
+        #expect(output.contains("(disabled)"))
+        #expect(output.contains("(focused)"))
+        #expect(!output.contains("Submit (enabled)"))
+    }
+
+    @Test("Clickable format outputs interactive elements")
+    func clickableFormat() {
+        let output = Formatter.formatClickable(interactiveTree)
+        // Submit: x=440+80/2=480, y=310+40/2=330
+        #expect(output.contains("480,330"))
+        // Search: x=200+200/2=300, y=50+30/2=65
+        #expect(output.contains("300,65"))
+        #expect(output.contains("disabled"))
+        #expect(!output.contains("Just text"))
+    }
+
+    @Test("Clickable JSON is valid array")
+    func clickableJSONFormat() {
+        let output = Formatter.formatClickableJSON(interactiveTree)
+        #expect(output.hasPrefix("["))
+        #expect(output.hasSuffix("]"))
+        #expect(output.contains("\"x\":480"))
+        #expect(output.contains("\"x\":300"))
+    }
 }
