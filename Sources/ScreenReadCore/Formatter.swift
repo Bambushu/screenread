@@ -52,6 +52,12 @@ public enum Formatter {
         return json
     }
 
+    // MARK: - Window List
+
+    public static func formatWindowList(_ windows: [WindowInfo]) -> String {
+        windows.map { $0.formatted }.joined(separator: "\n")
+    }
+
     // MARK: - Helpers
 
     private static func cleanRole(_ role: String) -> String {

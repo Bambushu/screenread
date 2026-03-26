@@ -41,11 +41,21 @@ struct AnyCodable: Decodable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if let str = try? container.decode(String.self) { value = str }
-        else if let int = try? container.decode(Int.self) { value = int }
-        else if let bool = try? container.decode(Bool.self) { value = bool }
-        else if let dict = try? container.decode([String: AnyCodable].self) { value = dict }
-        else { value = "" }
+        if container.decodeNil() {
+            value = NSNull()
+        } else if let bool = try? container.decode(Bool.self) {
+            value = bool
+        } else if let int = try? container.decode(Int.self) {
+            value = int
+        } else if let str = try? container.decode(String.self) {
+            value = str
+        } else if let arr = try? container.decode([AnyCodable].self) {
+            value = arr
+        } else if let dict = try? container.decode([String: AnyCodable].self) {
+            value = dict
+        } else {
+            value = NSNull()
+        }
     }
 
     var stringValue: String? { value as? String }
@@ -88,7 +98,12 @@ func sendToolResult(_ id: AnyCodableID?, text: String, isError: Bool = false) {
 
 func sendJSON(_ dict: [String: Any]) {
     guard let data = try? JSONSerialization.data(withJSONObject: dict),
-          let str = String(data: data, encoding: .utf8) else { return }
+          let str = String(data: data, encoding: .utf8) else {
+        // Fallback: don't silently drop — send a minimal error so the client doesn't hang
+        print("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal serialization error\"}}")
+        fflush(stdout)
+        return
+    }
     print(str)
     fflush(stdout)
 }
@@ -98,23 +113,24 @@ func sendJSON(_ dict: [String: Any]) {
 let tools: [[String: Any]] = [
     [
         "name": "screenread_snapshot",
-        "description": "Read the accessibility tree of a macOS window or application. Returns structured text representation of all UI elements.",
+        "description": "Read the accessibility tree of a macOS window or application. With no parameters, reads the frontmost (active) app. Returns structured text of all UI elements.",
         "inputSchema": [
             "type": "object",
             "properties": [
                 "app": ["type": "string", "description": "App name to read (e.g. 'Safari')"],
                 "window": ["type": "string", "description": "Fuzzy match on window title"],
                 "pid": ["type": "integer", "description": "Target by process ID"],
-                "depth": ["type": "integer", "description": "Max tree depth (default: 5, 0 = unlimited)"],
+                "depth": ["type": "integer", "description": "Max tree depth (default: 5). Use 0 for unlimited — may be slow on large apps."],
                 "textOnly": ["type": "boolean", "description": "Return only readable text, no structure"],
-                "roles": ["type": "string", "description": "Comma-separated roles to include"],
-                "ignore": ["type": "string", "description": "Comma-separated roles to exclude"],
+                "roles": ["type": "string", "description": "Comma-separated AX roles to include (e.g. 'AXButton,AXLink,AXTextField')"],
+                "ignore": ["type": "string", "description": "Comma-separated AX roles to exclude (e.g. 'AXGroup,AXScrollArea,AXUnknown')"],
             ] as [String: Any],
+            "additionalProperties": false,
         ] as [String: Any],
     ],
     [
         "name": "screenread_list",
-        "description": "List all open windows on macOS with their app name, title, and PID.",
+        "description": "List all open windows on macOS. Returns one line per window: 'AppName [PID] — Window Title'.",
         "inputSchema": [
             "type": "object",
             "additionalProperties": false,
@@ -122,27 +138,36 @@ let tools: [[String: Any]] = [
     ],
     [
         "name": "screenread_find_text",
-        "description": "Search for visible text across all open windows. Returns matches with window context.",
+        "description": "Search for visible text across all open windows. Plain text substring match (no regex). Returns matches with window context.",
         "inputSchema": [
             "type": "object",
             "properties": [
-                "query": ["type": "string", "description": "Text to search for"],
+                "query": ["type": "string", "description": "Plain text substring to search for (no regex). Case-insensitive by default."],
                 "caseSensitive": ["type": "boolean", "description": "Case-sensitive search (default: false)"],
             ] as [String: Any],
             "required": ["query"],
+            "additionalProperties": false,
         ] as [String: Any],
     ],
 ]
 
 // MARK: - Tool Execution
 
-func executeSnapshot(_ params: [String: AnyCodable]?) -> String {
+struct ToolResult {
+    let text: String
+    let isError: Bool
+}
+
+func executeSnapshot(_ params: [String: AnyCodable]?) -> ToolResult {
     let resolver = TargetResolver()
 
     do {
         let target: AXUIElement
         if let pid = params?["pid"]?.intValue {
-            target = try resolver.resolvePID(Int32(pid))
+            guard let pid32 = Int32(exactly: pid) else {
+                return ToolResult(text: "Invalid PID: \(pid)", isError: true)
+            }
+            target = try resolver.resolvePID(pid32)
         } else if let windowTitle = params?["window"]?.stringValue {
             target = try resolver.resolveWindow(windowTitle)
         } else if let appName = params?["app"]?.stringValue {
@@ -157,51 +182,91 @@ func executeSnapshot(_ params: [String: AnyCodable]?) -> String {
         let excludeRoles: Set<String>? = params?["ignore"]?.stringValue.map { Set($0.split(separator: ",").map(String.init)) }
 
         let walker = AXTreeWalker(maxDepth: depth, includeRoles: includeRoles, excludeRoles: excludeRoles, truncateAt: 500)
-        guard let tree = walker.walk(target) else {
-            return "Window found but accessibility tree is empty."
-        }
+        let result = walker.walk(target)
 
-        return textOnly ? Formatter.formatTextOnly(tree) : Formatter.formatTextTree(tree)
+        switch result {
+        case .tree(let tree):
+            let output = textOnly ? Formatter.formatTextOnly(tree) : Formatter.formatTextTree(tree)
+            return ToolResult(text: output, isError: false)
+        case .timedOut:
+            return ToolResult(text: "Timed out reading accessibility tree. Try a smaller depth or target a specific window.", isError: true)
+        case .empty:
+            return ToolResult(text: "Accessibility tree is empty. The app may not support accessibility or may need a moment to load.", isError: true)
+        }
     } catch {
-        return "Error: \(error)"
+        return ToolResult(text: "Error: \(error)", isError: true)
     }
 }
 
-func executeList() -> String {
+func executeList() -> ToolResult {
     let resolver = TargetResolver()
     let windows = resolver.listWindows()
-    return windows.map { "\($0.app) [\($0.pid)] — \($0.title)" }.joined(separator: "\n")
+    return ToolResult(text: Formatter.formatWindowList(windows), isError: false)
 }
 
-func executeFindText(_ params: [String: AnyCodable]?) -> String {
-    guard let query = params?["query"]?.stringValue else {
-        return "Error: 'query' parameter is required"
+func executeFindText(_ params: [String: AnyCodable]?) -> ToolResult {
+    guard let query = params?["query"]?.stringValue, !query.isEmpty else {
+        return ToolResult(text: "Error: 'query' parameter is required and must not be empty", isError: true)
     }
     let caseSensitive = params?["caseSensitive"]?.boolValue ?? false
+    let queryLower = caseSensitive ? query : query.lowercased()
     let resolver = TargetResolver()
-    let walker = AXTreeWalker(maxDepth: 0, includeRoles: nil, excludeRoles: nil, truncateAt: 0)
     var results: [String] = []
+    let maxResults = 100
+    var skippedApps: [String] = []
+
+    // Deduplicate: same PID may appear multiple times (one per window)
+    var seenPIDs = Set<Int32>()
 
     for app in resolver.listWindows() {
+        if results.count >= maxResults { break }
+        guard seenPIDs.insert(app.pid).inserted else { continue }
+
         do {
             let element = try resolver.resolvePID(app.pid)
-            guard let tree = walker.walk(element) else { continue }
+            // Fresh walker per app — each gets its own 3-second timeout budget
+            let walker = AXTreeWalker(maxDepth: 10, includeRoles: nil, excludeRoles: nil, truncateAt: 500, timeoutSeconds: 3.0)
+            let walkResult = walker.walk(element)
+
+            let tree: AXNode
+            switch walkResult {
+            case .tree(let node): tree = node
+            case .timedOut:
+                skippedApps.append("\(app.app) (timed out)")
+                continue
+            case .empty: continue
+            }
+
             let text = Formatter.formatTextOnly(tree)
             let lines = text.components(separatedBy: "\n")
             for line in lines {
                 let matches = caseSensitive
                     ? line.contains(query)
-                    : line.lowercased().contains(query.lowercased())
+                    : line.lowercased().contains(queryLower)
                 if matches {
                     results.append("[\(app.app) — \(app.title)] \(line.trimmingCharacters(in: .whitespaces))")
+                    if results.count >= maxResults { break }
                 }
             }
         } catch {
+            skippedApps.append("\(app.app) (error)")
             continue
         }
     }
 
-    return results.isEmpty ? "No matches found for '\(query)'" : results.joined(separator: "\n")
+    var output: String
+    if results.isEmpty {
+        output = "No matches found for '\(query)'"
+    } else {
+        output = results.joined(separator: "\n")
+        if results.count >= maxResults {
+            output += "\n(limited to \(maxResults) results — use screenread_snapshot with a specific app for more targeted results)"
+        }
+    }
+    if !skippedApps.isEmpty {
+        output += "\n(skipped \(skippedApps.count) app(s): \(skippedApps.joined(separator: ", ")))"
+    }
+    return ToolResult(text: output, isError: false)
 }
 
 // MARK: - Main Loop
@@ -229,21 +294,28 @@ while let line = readLine() {
 
     case "tools/call":
         let toolName = (request.params?["name"]?.stringValue) ?? ""
-        let args = request.params?["arguments"]
-        let argsDict: [String: AnyCodable]?
-        if let argValue = args?.value as? [String: AnyCodable] {
-            argsDict = argValue
-        } else {
-            argsDict = nil
-        }
+        let argsDict: [String: AnyCodable]? = {
+            guard let args = request.params?["arguments"] else { return nil }
+            if let typed = args.value as? [String: AnyCodable] { return typed }
+            // Fallback: re-decode from raw dict (handles [String: Any] case)
+            if let raw = args.value as? [String: Any],
+               let data = try? JSONSerialization.data(withJSONObject: raw),
+               let decoded = try? JSONDecoder().decode([String: AnyCodable].self, from: data) {
+                return decoded
+            }
+            return nil
+        }()
 
         switch toolName {
         case "screenread_snapshot":
-            sendToolResult(request.id, text: executeSnapshot(argsDict))
+            let result = executeSnapshot(argsDict)
+            sendToolResult(request.id, text: result.text, isError: result.isError)
         case "screenread_list":
-            sendToolResult(request.id, text: executeList())
+            let result = executeList()
+            sendToolResult(request.id, text: result.text, isError: result.isError)
         case "screenread_find_text":
-            sendToolResult(request.id, text: executeFindText(argsDict))
+            let result = executeFindText(argsDict)
+            sendToolResult(request.id, text: result.text, isError: result.isError)
         default:
             sendError(request.id, code: -32601, message: "Unknown tool: \(toolName)")
         }

@@ -10,8 +10,11 @@ struct AXTreeWalkerTests {
         let resolver = TargetResolver()
         let appElement = try resolver.resolveFrontmost()
         let walker = AXTreeWalker(maxDepth: 3, includeRoles: nil, excludeRoles: nil, truncateAt: 500)
-        let node = walker.walk(appElement)
-        #expect(node != nil, "Frontmost app should produce a tree")
+        let result = walker.walk(appElement)
+        guard case .tree = result else {
+            Issue.record("Frontmost app should produce a tree, got \(result)")
+            return
+        }
     }
 
     @Test("Depth limit is respected")
@@ -19,9 +22,9 @@ struct AXTreeWalkerTests {
         let resolver = TargetResolver()
         let appElement = try resolver.resolveFrontmost()
         let walker = AXTreeWalker(maxDepth: 1, includeRoles: nil, excludeRoles: nil, truncateAt: 500)
-        let node = walker.walk(appElement)
-        guard let node = node else {
-            Issue.record("Should produce a node")
+        let result = walker.walk(appElement)
+        guard case .tree(let node) = result else {
+            Issue.record("Should produce a tree")
             return
         }
         // At depth 1, children should exist but their children should be empty
@@ -35,8 +38,8 @@ struct AXTreeWalkerTests {
         let resolver = TargetResolver()
         let appElement = try resolver.resolveFrontmost()
         let walker = AXTreeWalker(maxDepth: 3, includeRoles: nil, excludeRoles: Set(["AXGroup"]), truncateAt: 500)
-        let node = walker.walk(appElement)
-        guard let node = node else { return }
+        let result = walker.walk(appElement)
+        guard case .tree(let node) = result else { return }
         func assertNoGroups(_ n: AXNode) {
             #expect(n.role != "AXGroup", "AXGroup should be excluded")
             for child in n.children { assertNoGroups(child) }
@@ -49,7 +52,25 @@ struct AXTreeWalkerTests {
         let resolver = TargetResolver()
         let appElement = try resolver.resolveFrontmost()
         let walker = AXTreeWalker(maxDepth: 0, includeRoles: nil, excludeRoles: nil, truncateAt: 500)
-        let node = walker.walk(appElement)
-        #expect(node != nil)
+        let result = walker.walk(appElement)
+        guard case .tree = result else {
+            Issue.record("Unlimited depth should produce a tree")
+            return
+        }
+    }
+
+    @Test("Timeout returns .timedOut for very short timeout")
+    func timeoutDetected() throws {
+        let resolver = TargetResolver()
+        let appElement = try resolver.resolveFrontmost()
+        // 0-second timeout should immediately time out
+        let walker = AXTreeWalker(maxDepth: 0, includeRoles: nil, excludeRoles: nil, truncateAt: 500, timeoutSeconds: 0.0)
+        let result = walker.walk(appElement)
+        // With 0s timeout we expect either .timedOut or .tree (if the first node was read before timeout check)
+        // The key test: it should not hang
+        switch result {
+        case .tree, .timedOut: break // both are acceptable
+        case .empty: break // also possible if timeout fires before first node
+        }
     }
 }

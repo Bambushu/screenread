@@ -1,0 +1,171 @@
+# ScreenRead
+
+Read what's on screen without taking a screenshot.
+
+ScreenRead gives AI agents access to the macOS accessibility tree — the same structured data that powers VoiceOver and other screen readers. Instead of capturing pixels and feeding them through vision models, your agent gets instant, structured text describing every UI element on screen.
+
+**~100ms** instead of 1-3 seconds. **Zero hallucination** — it reads what the OS knows, not what a model thinks it sees.
+
+## Why
+
+Most AI agent tooling uses screenshots to "see" the screen:
+
+1. Capture PNG (~200ms)
+2. Base64 encode and transfer (~500KB-2MB)
+3. Vision model processes pixels (expensive, slow)
+4. Model describes what it *thinks* it sees (sometimes wrong)
+
+But ~90% of agent tasks are text-based: "what does the error say?", "is this button visible?", "what's the page title?". Screenshots are overkill.
+
+ScreenRead skips all of that. It asks macOS directly: "What UI elements exist in this window?" and returns structured text instantly.
+
+## Install
+
+### Build from source
+
+```bash
+git clone https://github.com/Bambushu/screenread.git
+cd screenread
+swift build -c release
+cp .build/release/screenread ~/.local/bin/
+cp .build/release/screenread-mcp ~/.local/bin/
+```
+
+### Requirements
+
+- macOS 13+ (Ventura or later)
+- Accessibility permission (System Settings > Privacy & Security > Accessibility)
+
+## Usage
+
+### CLI
+
+```bash
+# Read the frontmost app
+screenread
+
+# Read a specific app
+screenread --app Safari
+
+# Fuzzy match a window title
+screenread --window "inbox"
+
+# Text only (no structure)
+screenread --app Warp --text-only
+
+# Shallow read (depth 2)
+screenread --app Finder --shallow
+
+# Full text, no truncation
+screenread --app Terminal --full
+
+# JSON output
+screenread --app Safari --json
+
+# List all open windows
+screenread --list
+
+# Filter by role
+screenread --app Safari --role AXButton,AXLink
+
+# Exclude roles
+screenread --app Safari --ignore AXGroup,AXScrollArea
+```
+
+### MCP Server
+
+Add to your MCP config:
+
+**Claude Code** (project-scoped `.mcp.json` in your project root):
+
+```json
+{
+  "mcpServers": {
+    "screenread": {
+      "command": "screenread-mcp"
+    }
+  }
+}
+```
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "screenread": {
+      "command": "/path/to/screenread-mcp"
+    }
+  }
+}
+```
+
+This exposes three tools to any MCP-compatible client:
+
+#### `screenread_snapshot`
+
+Read the accessibility tree of a specific app or window. With no parameters, reads the frontmost (active) app.
+
+| Parameter  | Type    | Description                              |
+|-----------|---------|------------------------------------------|
+| `app`     | string  | App name (e.g. `"Safari"`)               |
+| `window`  | string  | Fuzzy match on window title              |
+| `pid`     | integer | Target by process ID                     |
+| `depth`   | integer | Max tree depth (default: 5). Use 0 for unlimited — may be slow on large apps. |
+| `textOnly`| boolean | Text only, no structure                  |
+| `roles`   | string  | Comma-separated AX roles to include (e.g. `"AXButton,AXLink"`) |
+| `ignore`  | string  | Comma-separated AX roles to exclude (e.g. `"AXGroup,AXScrollArea"`) |
+
+#### `screenread_list`
+
+List all open windows. Returns one line per window in the format: `AppName [PID] — Window Title`. No parameters.
+
+#### `screenread_find_text`
+
+Search for visible text across all open windows. Plain substring match (no regex).
+
+| Parameter       | Type    | Description                    |
+|----------------|---------|--------------------------------|
+| `query`        | string  | Plain text substring to search for (required) |
+| `caseSensitive`| boolean | Case-sensitive (default: false) |
+
+Results are capped at 100 matches. Use `screenread_snapshot` with a specific app for more targeted results.
+
+## Architecture
+
+```
+screenread/
+├── Sources/
+│   ├── ScreenReadCore/     # Shared library
+│   │   ├── AXHelpers.swift       # Shared AX attribute accessors
+│   │   ├── AXTreeWalker.swift    # Recursive accessibility tree traversal
+│   │   ├── Formatter.swift       # Text tree, text-only, and JSON output
+│   │   ├── TargetResolver.swift  # App/window/PID resolution with fuzzy matching
+│   │   └── Types.swift           # AXNode, WalkResult, WindowInfo, errors
+│   ├── screenread/         # CLI (uses ArgumentParser)
+│   └── screenread-mcp/     # MCP server (JSON-RPC over stdio)
+└── Tests/
+    └── ScreenReadCoreTests/  # 14 tests across 3 suites
+```
+
+The core library (`ScreenReadCore`) does all the work. Both the CLI and MCP server are thin wrappers around it.
+
+## Screenshots vs ScreenRead
+
+| | Screenshots | ScreenRead |
+|---|---|---|
+| **Speed** | 1-3 seconds | ~100ms |
+| **Token cost** | High (vision model) | Low (text) |
+| **Accuracy** | Can hallucinate text | Exact (reads from OS) |
+| **Scope** | Web only (Playwright) or full screen | Any macOS app |
+| **Good for** | Visual checks (layout, colors) | Content verification, UI state |
+
+Use ScreenRead for the 90% of tasks that are about content and structure. Keep screenshots for the 10% that need pixels.
+
+## Platform
+
+macOS only. ScreenRead uses Apple's `AXUIElement` accessibility API, which has no equivalent on other platforms. Linux would need AT-SPI, Windows needs UI Automation — fundamentally different APIs.
+
+## License
+
+MIT

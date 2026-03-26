@@ -112,9 +112,9 @@ public final class TargetResolver: Sendable {
 
     // MARK: - Get First Window of App Element
 
-    public func firstWindow(_ appElement: AXUIElement) throws -> AXUIElement {
+    public func firstWindow(_ appElement: AXUIElement, appName: String = "unknown") throws -> AXUIElement {
         guard let windows = getAXWindows(appElement), let first = windows.first else {
-            throw ScreenReadError.noWindows("app")
+            throw ScreenReadError.noWindows(appName)
         }
         return first
     }
@@ -133,11 +133,8 @@ public final class TargetResolver: Sendable {
         return windows.compactMap { getStringAttribute($0, kAXTitleAttribute as CFString) }
     }
 
-    func getStringAttribute(_ element: AXUIElement, _ attribute: CFString) -> String? {
-        var value: AnyObject?
-        let result = AXUIElementCopyAttributeValue(element, attribute, &value)
-        guard result == .success else { return nil }
-        return value as? String
+    private func getStringAttribute(_ element: AXUIElement, _ attribute: CFString) -> String? {
+        axStringAttribute(element, attribute)
     }
 
     private func levenshtein(_ s1: String, _ s2: String) -> Int {

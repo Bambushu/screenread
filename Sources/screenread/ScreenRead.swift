@@ -59,9 +59,7 @@ struct ScreenRead: ParsableCommand {
                 let data = try encoder.encode(windows)
                 print(String(data: data, encoding: .utf8) ?? "[]")
             } else {
-                for w in windows {
-                    print("\(w.app) [\(w.pid)] — \(w.title)")
-                }
+                print(Formatter.formatWindowList(windows))
             }
             return
         }
@@ -93,17 +91,22 @@ struct ScreenRead: ParsableCommand {
             truncateAt: full ? 0 : 500
         )
 
-        guard let tree = walker.walk(target) else {
-            throw ScreenReadError.emptyTree
-        }
+        let result = walker.walk(target)
 
-        // Format output
-        if json {
-            print(Formatter.formatJSON(tree))
-        } else if textOnly {
-            print(Formatter.formatTextOnly(tree))
-        } else {
-            print(Formatter.formatTextTree(tree))
+        switch result {
+        case .tree(let tree):
+            if json {
+                print(Formatter.formatJSON(tree))
+            } else if textOnly {
+                print(Formatter.formatTextOnly(tree))
+            } else {
+                print(Formatter.formatTextTree(tree))
+            }
+        case .timedOut:
+            let name = app ?? window ?? "app"
+            throw ScreenReadError.timeout(name)
+        case .empty:
+            throw ScreenReadError.emptyTree
         }
     }
 }

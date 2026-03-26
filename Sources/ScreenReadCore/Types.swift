@@ -21,6 +21,14 @@ public enum OutputFormat: Sendable {
     case json
 }
 
+// MARK: - Walk Result
+
+public enum WalkResult: Sendable {
+    case tree(AXNode)
+    case timedOut
+    case empty
+}
+
 // MARK: - AX Node
 
 public struct AXNode: Sendable, Codable {
@@ -68,6 +76,11 @@ public struct WindowInfo: Sendable, Codable {
         self.title = title
         self.bundleId = bundleId
     }
+
+    /// Formatted display string: "AppName [PID] — Window Title"
+    public var formatted: String {
+        "\(app) [\(pid)] — \(title)"
+    }
 }
 
 // MARK: - Errors
@@ -84,7 +97,7 @@ public enum ScreenReadError: Error, CustomStringConvertible {
     public var description: String {
         switch self {
         case .noAccessibilityPermission:
-            return "ScreenRead needs Accessibility access. Grant it in System Preferences → Privacy & Security → Accessibility."
+            return "ScreenRead needs Accessibility access. Grant it in System Settings → Privacy & Security → Accessibility."
         case .appNotFound(let name, let suggestions):
             let hint = suggestions.isEmpty ? "" : " Did you mean: \(suggestions.joined(separator: ", "))?"
             return "No app matching '\(name)'.\(hint)"
@@ -96,9 +109,9 @@ public enum ScreenReadError: Error, CustomStringConvertible {
         case .noWindows(let app):
             return "App '\(app)' has no open windows."
         case .timeout(let app):
-            return "App '\(app)' is not responding (timed out after 2s)."
+            return "Timed out reading '\(app)'. The app may have a very large UI tree. Try --shallow or target a specific --window."
         case .emptyTree:
-            return "Window found but accessibility tree is empty (app may not support accessibility)."
+            return "Accessibility tree is empty. The app may not support accessibility, or may need a moment to load. Try --shallow or target a specific --window."
         }
     }
 }

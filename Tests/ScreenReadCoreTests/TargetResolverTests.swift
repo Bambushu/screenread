@@ -15,9 +15,8 @@ struct TargetResolverTests {
     @Test("resolveApp finds Finder")
     func resolveAppFinder() throws {
         let resolver = TargetResolver()
-        // Finder is always running on macOS
-        let element = try resolver.resolveApp("Finder")
-        #expect(element != nil)
+        // Finder is always running on macOS — succeeds if no throw
+        _ = try resolver.resolveApp("Finder")
     }
 
     @Test("resolveApp suggests similar names on miss")
@@ -38,8 +37,8 @@ struct TargetResolverTests {
     @Test("resolveFrontmost returns an element")
     func resolveFrontmost() throws {
         let resolver = TargetResolver()
-        let element = try resolver.resolveFrontmost()
-        #expect(element != nil)
+        // Succeeds if no throw
+        _ = try resolver.resolveFrontmost()
     }
 
     @Test("resolvePID fails for invalid PID")
