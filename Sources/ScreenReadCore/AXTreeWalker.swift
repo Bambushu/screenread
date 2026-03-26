@@ -4,6 +4,8 @@ import ApplicationServices
 import CoreGraphics
 
 public final class AXTreeWalker: Sendable {
+    public typealias NodeCallback = (AXNode, Int) -> Void  // node, depth
+
     private let maxDepth: Int // 0 = unlimited
     private let includeRoles: Set<String>?
     private let excludeRoles: Set<String>?
@@ -21,9 +23,14 @@ public final class AXTreeWalker: Sendable {
     /// Walk the accessibility tree from the given element.
     /// Returns .tree with the root node, .timedOut if the walk was aborted, or .empty if no content.
     public func walk(_ element: AXUIElement) -> WalkResult {
+        walk(element, onNode: nil)
+    }
+
+    /// Walk the accessibility tree, calling onNode for each node as it is built.
+    public func walk(_ element: AXUIElement, onNode: NodeCallback?) -> WalkResult {
         let deadline = ContinuousClock.now + .seconds(timeoutSeconds)
         var nodeCount = 0
-        if let node = walkRecursive(element, depth: 0, deadline: deadline, nodeCount: &nodeCount) {
+        if let node = walkRecursive(element, depth: 0, deadline: deadline, nodeCount: &nodeCount, onNode: onNode) {
             return .tree(node)
         }
         // Distinguish timeout from genuinely empty tree
@@ -33,7 +40,7 @@ public final class AXTreeWalker: Sendable {
         return .empty
     }
 
-    private func walkRecursive(_ element: AXUIElement, depth: Int, deadline: ContinuousClock.Instant, nodeCount: inout Int) -> AXNode? {
+    private func walkRecursive(_ element: AXUIElement, depth: Int, deadline: ContinuousClock.Instant, nodeCount: inout Int, onNode: NodeCallback?) -> AXNode? {
         // Check timeout every 256 nodes to avoid excessive syscalls
         nodeCount += 1
         if nodeCount & 0xFF == 0 && ContinuousClock.now >= deadline {
@@ -58,7 +65,7 @@ public final class AXTreeWalker: Sendable {
         }
         if let includeRoles = includeRoles, !includeRoles.contains(role) {
             // Flatten: splice matching descendants directly, don't wrap in a phantom node
-            let children = getChildren(element, depth: depth, deadline: deadline, nodeCount: &nodeCount)
+            let children = getChildren(element, depth: depth, deadline: deadline, nodeCount: &nodeCount, onNode: onNode)
             if children.isEmpty { return nil }
             // Return children count == 1? Unwrap single child to avoid needless nesting
             if children.count == 1 { return children[0] }
@@ -66,10 +73,10 @@ public final class AXTreeWalker: Sendable {
             return AXNode(role: role, children: children)
         }
 
-        return buildNode(element, role: role, depth: depth, deadline: deadline, nodeCount: &nodeCount)
+        return buildNode(element, role: role, depth: depth, deadline: deadline, nodeCount: &nodeCount, onNode: onNode)
     }
 
-    private func buildNode(_ element: AXUIElement, role: String, depth: Int, deadline: ContinuousClock.Instant, nodeCount: inout Int) -> AXNode {
+    private func buildNode(_ element: AXUIElement, role: String, depth: Int, deadline: ContinuousClock.Instant, nodeCount: inout Int, onNode: NodeCallback?) -> AXNode {
         let subrole = getStringAttribute(element, kAXSubroleAttribute as CFString)
         let title = truncate(getStringAttribute(element, kAXTitleAttribute as CFString))
         let value = truncate(getStringAttribute(element, kAXValueAttribute as CFString))
@@ -79,9 +86,9 @@ public final class AXTreeWalker: Sendable {
         let isEnabled = getBoolAttribute(element, kAXEnabledAttribute as CFString)
         let isFocused = getBoolAttribute(element, kAXFocusedAttribute as CFString)
         let isSelected = getBoolAttribute(element, kAXSelectedAttribute as CFString)
-        let children = getChildren(element, depth: depth, deadline: deadline, nodeCount: &nodeCount)
+        let children = getChildren(element, depth: depth, deadline: deadline, nodeCount: &nodeCount, onNode: onNode)
 
-        return AXNode(
+        let node = AXNode(
             role: role,
             subrole: subrole,
             title: title,
@@ -94,15 +101,17 @@ public final class AXTreeWalker: Sendable {
             isSelected: isSelected,
             children: children
         )
+        onNode?(node, depth)
+        return node
     }
 
-    private func getChildren(_ element: AXUIElement, depth: Int, deadline: ContinuousClock.Instant, nodeCount: inout Int) -> [AXNode] {
+    private func getChildren(_ element: AXUIElement, depth: Int, deadline: ContinuousClock.Instant, nodeCount: inout Int, onNode: NodeCallback?) -> [AXNode] {
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value)
         guard result == .success, let children = value as? [AXUIElement] else {
             return []
         }
-        return children.compactMap { walkRecursive($0, depth: depth + 1, deadline: deadline, nodeCount: &nodeCount) }
+        return children.compactMap { walkRecursive($0, depth: depth + 1, deadline: deadline, nodeCount: &nodeCount, onNode: onNode) }
     }
 
     // MARK: - Attribute Helpers
