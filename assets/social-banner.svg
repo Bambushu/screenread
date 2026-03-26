@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" fill="none">
+  <defs>
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#050508"/>
+      <stop offset="50%" stop-color="#0A0A12"/>
+      <stop offset="100%" stop-color="#050510"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6EE7B7"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <radialGradient id="glow-green" cx="0.3" cy="0.4" r="0.5">
+      <stop offset="0%" stop-color="#6EE7B7" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#6EE7B7" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-blue" cx="0.7" cy="0.6" r="0.4">
+      <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#3B82F6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Deep dark background -->
+  <rect width="1200" height="630" fill="url(#bg-grad)"/>
+
+  <!-- Subtle ambient glow orbs -->
+  <rect width="1200" height="630" fill="url(#glow-green)"/>
+  <rect width="1200" height="630" fill="url(#glow-blue)"/>
+
+  <!-- Large accessibility tree visualization (left side) -->
+  <g transform="translate(80, 140)" opacity="0.9">
+    <!-- Root node -->
+    <circle cx="60" cy="100" r="12" fill="url(#accent)"/>
+    <text x="60" y="105" text-anchor="middle" font-family="SF Mono, monospace" font-size="10" fill="#050508" font-weight="700">AX</text>
+
+    <!-- Level 1 branches -->
+    <line x1="72" y1="100" x2="140" y2="60" stroke="#6EE7B7" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+    <line x1="72" y1="100" x2="140" y2="140" stroke="#3B82F6" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+    <line x1="72" y1="100" x2="140" y2="220" stroke="#6EE7B7" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+
+    <!-- Level 1 nodes -->
+    <rect x="140" y="42" width="120" height="36" rx="10" fill="#6EE7B7" fill-opacity="0.1" stroke="#6EE7B7" stroke-width="1.5" stroke-opacity="0.4"/>
+    <text x="200" y="65" text-anchor="middle" font-family="SF Mono, monospace" font-size="11" fill="#6EE7B7" opacity="0.9">AXButton</text>
+
+    <rect x="140" y="122" width="120" height="36" rx="10" fill="#3B82F6" fill-opacity="0.1" stroke="#3B82F6" stroke-width="1.5" stroke-opacity="0.4"/>
+    <text x="200" y="145" text-anchor="middle" font-family="SF Mono, monospace" font-size="11" fill="#3B82F6" opacity="0.9">AXTextField</text>
+
+    <rect x="140" y="202" width="120" height="36" rx="10" fill="#6EE7B7" fill-opacity="0.08" stroke="#6EE7B7" stroke-width="1" stroke-opacity="0.25"/>
+    <text x="200" y="225" text-anchor="middle" font-family="SF Mono, monospace" font-size="11" fill="#6EE7B7" opacity="0.6">AXLink</text>
+
+    <!-- Level 2 branches -->
+    <line x1="260" y1="60" x2="310" y2="40" stroke="#6EE7B7" stroke-width="1.2" stroke-linecap="round" opacity="0.2"/>
+    <line x1="260" y1="60" x2="310" y2="76" stroke="#6EE7B7" stroke-width="1.2" stroke-linecap="round" opacity="0.2"/>
+    <line x1="260" y1="140" x2="310" y2="130" stroke="#3B82F6" stroke-width="1.2" stroke-linecap="round" opacity="0.2"/>
+
+    <!-- Level 2 dots -->
+    <circle cx="318" cy="40" r="4" fill="#6EE7B7" opacity="0.3"/>
+    <circle cx="318" cy="76" r="4" fill="#6EE7B7" opacity="0.25"/>
+    <circle cx="318" cy="130" r="4" fill="#3B82F6" opacity="0.3"/>
+  </g>
+
+  <!-- Main text (right side) -->
+  <text x="560" y="230" font-family="system-ui, -apple-system, 'SF Pro Display', sans-serif" font-size="72" font-weight="700" letter-spacing="-3" fill="#F9FAFB">
+    Screen<tspan fill="url(#accent)">Read</tspan>
+  </text>
+
+  <!-- Subtitle -->
+  <text x="564" y="280" font-family="system-ui, -apple-system, 'SF Pro Text', sans-serif" font-size="22" font-weight="400" fill="#9CA3AF">
+    Read what's on screen without a screenshot.
+  </text>
+
+  <!-- Feature pills -->
+  <g transform="translate(560, 310)">
+    <rect x="0" y="0" width="90" height="32" rx="16" fill="#6EE7B7" fill-opacity="0.1" stroke="#6EE7B7" stroke-width="1" stroke-opacity="0.3"/>
+    <text x="45" y="21" text-anchor="middle" font-family="SF Mono, monospace" font-size="11" fill="#6EE7B7" font-weight="500">~100ms</text>
+
+    <rect x="102" y="0" width="70" height="32" rx="16" fill="#3B82F6" fill-opacity="0.1" stroke="#3B82F6" stroke-width="1" stroke-opacity="0.3"/>
+    <text x="137" y="21" text-anchor="middle" font-family="SF Mono, monospace" font-size="11" fill="#3B82F6" font-weight="500">MCP</text>
+
+    <rect x="184" y="0" width="72" height="32" rx="16" fill="#6EE7B7" fill-opacity="0.08" stroke="#6EE7B7" stroke-width="1" stroke-opacity="0.2"/>
+    <text x="220" y="21" text-anchor="middle" font-family="SF Mono, monospace" font-size="11" fill="#9CA3AF" font-weight="500">Swift</text>
+
+    <rect x="268" y="0" width="88" height="32" rx="16" fill="#3B82F6" fill-opacity="0.08" stroke="#3B82F6" stroke-width="1" stroke-opacity="0.2"/>
+    <text x="312" y="21" text-anchor="middle" font-family="SF Mono, monospace" font-size="11" fill="#9CA3AF" font-weight="500">macOS</text>
+
+    <rect x="368" y="0" width="110" height="32" rx="16" fill="#6EE7B7" fill-opacity="0.08" stroke="#6EE7B7" stroke-width="1" stroke-opacity="0.2"/>
+    <text x="423" y="21" text-anchor="middle" font-family="SF Mono, monospace" font-size="11" fill="#9CA3AF" font-weight="500">Open Source</text>
+  </g>
+
+  <!-- Terminal snippet preview -->
+  <g transform="translate(560, 380)">
+    <rect x="0" y="0" width="540" height="160" rx="14" fill="#0D0D14" stroke="#1F2937" stroke-width="1"/>
+
+    <!-- Terminal dots -->
+    <circle cx="20" cy="18" r="5" fill="#EF4444" opacity="0.6"/>
+    <circle cx="36" cy="18" r="5" fill="#F59E0B" opacity="0.6"/>
+    <circle cx="52" cy="18" r="5" fill="#22C55E" opacity="0.6"/>
+
+    <!-- Terminal text -->
+    <text x="20" y="55" font-family="SF Mono, Menlo, monospace" font-size="13" fill="#6B7280">$</text>
+    <text x="36" y="55" font-family="SF Mono, Menlo, monospace" font-size="13" fill="#E5E7EB"> screenread --app Safari --text-only</text>
+
+    <text x="20" y="80" font-family="SF Mono, Menlo, monospace" font-size="12" fill="#6EE7B7" opacity="0.8">Safari</text>
+    <text x="20" y="98" font-family="SF Mono, Menlo, monospace" font-size="12" fill="#9CA3AF">Back  Forward  Reload  Home</text>
+    <text x="20" y="116" font-family="SF Mono, Menlo, monospace" font-size="12" fill="#9CA3AF">Address and Search Bar</text>
+    <text x="20" y="134" font-family="SF Mono, Menlo, monospace" font-size="12" fill="#9CA3AF">Welcome to Apple</text>
+    <text x="20" y="148" font-family="SF Mono, Menlo, monospace" font-size="11" fill="#4B5563">0.09s</text>
+  </g>
+
+  <!-- Bottom branding -->
+  <text x="80" y="590" font-family="system-ui, sans-serif" font-size="14" fill="#4B5563">github.com/Bambushu/screenread</text>
+</svg>

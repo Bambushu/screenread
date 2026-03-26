@@ -1,6 +1,14 @@
-# ScreenRead
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo.svg">
+    <img alt="ScreenRead" src="assets/logo-dark.svg" width="400">
+  </picture>
+</p>
 
-Read what's on screen without taking a screenshot.
+<p align="center">
+  Read what's on screen without taking a screenshot.
+</p>
 
 ScreenRead gives AI agents access to the macOS accessibility tree — the same structured data that powers VoiceOver and other screen readers. Instead of capturing pixels and feeding them through vision models, your agent gets instant, structured text describing every UI element on screen.
 

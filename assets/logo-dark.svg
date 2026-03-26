@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120" fill="none">
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6EE7B7"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="accent-subtle" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6EE7B7" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.12"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icon: stylized screen with accessibility tree -->
+  <g transform="translate(12, 12)">
+    <rect x="0" y="8" width="88" height="80" rx="18" ry="18" fill="url(#accent-subtle)" stroke="url(#accent)" stroke-width="2"/>
+
+    <!-- Tree nodes -->
+    <circle cx="28" cy="36" r="4" fill="url(#accent)"/>
+    <circle cx="52" cy="28" r="3.5" fill="#6EE7B7"/>
+    <circle cx="52" cy="48" r="3.5" fill="#3B82F6"/>
+    <circle cx="68" cy="36" r="3" fill="#6EE7B7" opacity="0.7"/>
+    <circle cx="68" cy="56" r="3" fill="#3B82F6" opacity="0.7"/>
+
+    <!-- Connecting lines -->
+    <line x1="32" y1="36" x2="48" y2="28" stroke="url(#accent)" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+    <line x1="32" y1="36" x2="48" y2="48" stroke="url(#accent)" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+    <line x1="55.5" y1="28" x2="65" y2="36" stroke="#6EE7B7" stroke-width="1.2" stroke-linecap="round" opacity="0.4"/>
+    <line x1="55.5" y1="48" x2="65" y2="56" stroke="#3B82F6" stroke-width="1.2" stroke-linecap="round" opacity="0.4"/>
+
+    <!-- Scan lines -->
+    <rect x="12" y="66" width="64" height="2.5" rx="1.25" fill="url(#accent)" opacity="0.5"/>
+    <rect x="12" y="74" width="44" height="2.5" rx="1.25" fill="url(#accent)" opacity="0.3"/>
+  </g>
+
+  <!-- Wordmark (light for dark backgrounds) -->
+  <text x="120" y="72" font-family="system-ui, -apple-system, 'SF Pro Display', sans-serif" font-size="44" font-weight="600" letter-spacing="-1.5" fill="#F9FAFB">
+    Screen<tspan fill="url(#accent)">Read</tspan>
+  </text>
+
+  <text x="122" y="96" font-family="system-ui, -apple-system, 'SF Pro Text', sans-serif" font-size="13" font-weight="400" letter-spacing="0.5" fill="#9CA3AF">
+    accessibility tree for AI agents
+  </text>
+</svg>
