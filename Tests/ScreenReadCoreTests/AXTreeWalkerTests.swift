@@ -59,6 +59,23 @@ struct AXTreeWalkerTests {
         }
     }
 
+    @Test("At least one node has isEnabled populated")
+    func stateMetadataIsEnabled() throws {
+        let resolver = TargetResolver()
+        let appElement = try resolver.resolveFrontmost()
+        let walker = AXTreeWalker(maxDepth: 3, includeRoles: nil, excludeRoles: nil, truncateAt: 500)
+        let result = walker.walk(appElement)
+        guard case .tree(let root) = result else {
+            Issue.record("Should produce a tree")
+            return
+        }
+        func hasIsEnabled(_ node: AXNode) -> Bool {
+            if node.isEnabled != nil { return true }
+            return node.children.contains(where: hasIsEnabled)
+        }
+        #expect(hasIsEnabled(root), "At least one node in the tree should have isEnabled != nil")
+    }
+
     @Test("Timeout returns .timedOut for very short timeout")
     func timeoutDetected() throws {
         let resolver = TargetResolver()

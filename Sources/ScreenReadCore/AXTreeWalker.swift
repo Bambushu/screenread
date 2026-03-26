@@ -76,6 +76,9 @@ public final class AXTreeWalker: Sendable {
         let roleDescription = getStringAttribute(element, kAXRoleDescriptionAttribute as CFString)
         let position = getPointAttribute(element, kAXPositionAttribute as CFString)
         let size = getSizeAttribute(element, kAXSizeAttribute as CFString)
+        let isEnabled = getBoolAttribute(element, kAXEnabledAttribute as CFString)
+        let isFocused = getBoolAttribute(element, kAXFocusedAttribute as CFString)
+        let isSelected = getBoolAttribute(element, kAXSelectedAttribute as CFString)
         let children = getChildren(element, depth: depth, deadline: deadline, nodeCount: &nodeCount)
 
         return AXNode(
@@ -86,6 +89,9 @@ public final class AXTreeWalker: Sendable {
             roleDescription: roleDescription,
             position: position,
             size: size,
+            isEnabled: isEnabled,
+            isFocused: isFocused,
+            isSelected: isSelected,
             children: children
         )
     }

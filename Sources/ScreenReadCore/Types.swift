@@ -39,6 +39,9 @@ public struct AXNode: Sendable, Codable {
     public let roleDescription: String?
     public let position: [String: Double]?
     public let size: [String: Double]?
+    public let isEnabled: Bool?
+    public let isFocused: Bool?
+    public let isSelected: Bool?
     public var children: [AXNode]
 
     public init(
@@ -49,6 +52,9 @@ public struct AXNode: Sendable, Codable {
         roleDescription: String? = nil,
         position: [String: Double]? = nil,
         size: [String: Double]? = nil,
+        isEnabled: Bool? = nil,
+        isFocused: Bool? = nil,
+        isSelected: Bool? = nil,
         children: [AXNode] = []
     ) {
         self.role = role
@@ -58,6 +64,9 @@ public struct AXNode: Sendable, Codable {
         self.roleDescription = roleDescription
         self.position = position
         self.size = size
+        self.isEnabled = isEnabled
+        self.isFocused = isFocused
+        self.isSelected = isSelected
         self.children = children
     }
 }
