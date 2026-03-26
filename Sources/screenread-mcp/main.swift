@@ -445,7 +445,7 @@ while let line = readLine() {
         sendResponse(request.id, [
             "protocolVersion": "2025-11-25",
             "capabilities": ["tools": ["listChanged": false]],
-            "serverInfo": ["name": "screenread", "version": "0.1.0"],
+            "serverInfo": ["name": "screenread", "version": "0.2.0"],
         ] as [String: Any])
 
     case "notifications/initialized":

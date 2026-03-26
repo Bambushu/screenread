@@ -70,6 +70,18 @@ screenread --app Safari --role AXButton,AXLink
 
 # Exclude roles
 screenread --app Safari --ignore AXGroup,AXScrollArea
+
+# List interactive elements with click coordinates
+screenread --clickable --app Safari
+screenread --clickable --app Finder --json
+
+# Watch for UI changes (poll every 2s, Ctrl+C to stop)
+screenread --watch --app Safari
+screenread --watch --app Safari --interval 5
+
+# Stream JSONL (one JSON object per node per line)
+screenread --stream --app Safari
+screenread --stream --app Safari | jq 'select(.role == "AXButton")'
 ```
 
 ### MCP Server
@@ -100,7 +112,7 @@ Add to your MCP config:
 }
 ```
 
-This exposes three tools to any MCP-compatible client:
+This exposes five tools to any MCP-compatible client:
 
 #### `screenread_snapshot`
 
@@ -131,6 +143,34 @@ Search for visible text across all open windows. Plain substring match (no regex
 
 Results are capped at 100 matches. Use `screenread_snapshot` with a specific app for more targeted results.
 
+#### `screenread_clickable`
+
+List interactive elements (buttons, links, text fields) with their click coordinates.
+
+| Parameter | Type    | Description                                    |
+|----------|---------|------------------------------------------------|
+| `app`    | string  | App name (e.g. `"Safari"`)                     |
+| `window` | string  | Fuzzy match on window title                    |
+| `pid`    | integer | Target by process ID                           |
+| `roles`  | string  | Override default interactive roles (e.g. `"AXButton,AXLink"`) |
+
+Returns a table with role, label, center x/y coordinates, and state (enabled/disabled/focused/selected).
+
+#### `screenread_watch`
+
+Watch an app for UI changes over a duration.
+
+| Parameter  | Type    | Description                                    |
+|-----------|---------|------------------------------------------------|
+| `app`     | string  | App name (e.g. `"Safari"`)                     |
+| `window`  | string  | Fuzzy match on window title                    |
+| `pid`     | integer | Target by process ID                           |
+| `duration`| integer | How long to watch in seconds (default: 10, max: 60) |
+| `interval`| integer | Poll interval in seconds (default: 2, min: 1)  |
+| `textOnly`| boolean | Compare text content only (default: false)      |
+
+Polls the accessibility tree at the given interval and reports additions, removals, and value/state changes.
+
 ## Architecture
 
 ```
@@ -138,14 +178,16 @@ screenread/
 ├── Sources/
 │   ├── ScreenReadCore/     # Shared library
 │   │   ├── AXHelpers.swift       # Shared AX attribute accessors
-│   │   ├── AXTreeWalker.swift    # Recursive accessibility tree traversal
-│   │   ├── Formatter.swift       # Text tree, text-only, and JSON output
+│   │   ├── AXTreeWalker.swift    # Recursive accessibility tree traversal + streaming callback
+│   │   ├── Formatter.swift       # Text tree, text-only, JSON, clickable output
+│   │   ├── StreamFormatter.swift # JSONL single-node encoder
 │   │   ├── TargetResolver.swift  # App/window/PID resolution with fuzzy matching
+│   │   ├── TreeDiffer.swift      # Compare two tree snapshots for changes
 │   │   └── Types.swift           # AXNode, WalkResult, WindowInfo, errors
 │   ├── screenread/         # CLI (uses ArgumentParser)
 │   └── screenread-mcp/     # MCP server (JSON-RPC over stdio)
 └── Tests/
-    └── ScreenReadCoreTests/  # 14 tests across 3 suites
+    └── ScreenReadCoreTests/  # 27 tests across 4 suites
 ```
 
 The core library (`ScreenReadCore`) does all the work. Both the CLI and MCP server are thin wrappers around it.
