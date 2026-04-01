@@ -369,7 +369,7 @@ func executeWatch(_ params: [String: AnyCodable]?) -> ToolResult {
     // Walk baseline tree
     let baseWalker = AXTreeWalker(maxDepth: 5, includeRoles: nil, excludeRoles: nil, truncateAt: 500)
     let baseResult = baseWalker.walk(target)
-    let baseline: AXNode
+    var baseline: AXNode
     switch baseResult {
     case .tree(let tree):
         baseline = tree
@@ -412,6 +412,8 @@ func executeWatch(_ params: [String: AnyCodable]?) -> ToolResult {
         if !changes.isEmpty {
             allChanges.append((elapsed, changes))
         }
+
+        baseline = currentTree
     }
 
     let totalChanges = allChanges.reduce(0) { $0 + $1.1.count }
