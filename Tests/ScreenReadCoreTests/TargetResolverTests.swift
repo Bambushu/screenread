@@ -8,7 +8,7 @@ struct TargetResolverTests {
     @Test("listWindows returns at least one window")
     func listWindowsReturnsResults() throws {
         let resolver = TargetResolver()
-        let windows = resolver.listWindows()
+        let windows = try resolver.listWindows()
         #expect(!windows.isEmpty, "Should find at least one window on a running macOS system")
     }
 

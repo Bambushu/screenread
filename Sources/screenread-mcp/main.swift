@@ -230,8 +230,12 @@ func executeSnapshot(_ params: [String: AnyCodable]?) -> ToolResult {
 
 func executeList() -> ToolResult {
     let resolver = TargetResolver()
-    let windows = resolver.listWindows()
-    return ToolResult(text: Formatter.formatWindowList(windows), isError: false)
+    do {
+        let windows = try resolver.listWindows()
+        return ToolResult(text: Formatter.formatWindowList(windows), isError: false)
+    } catch {
+        return ToolResult(text: "Error: \(error)", isError: true)
+    }
 }
 
 func executeFindText(_ params: [String: AnyCodable]?) -> ToolResult {
@@ -248,7 +252,7 @@ func executeFindText(_ params: [String: AnyCodable]?) -> ToolResult {
     // Deduplicate: same PID may appear multiple times (one per window)
     var seenPIDs = Set<Int32>()
 
-    for app in resolver.listWindows() {
+    for app in (try? resolver.listWindows()) ?? [] {
         if results.count >= maxResults { break }
         guard seenPIDs.insert(app.pid).inserted else { continue }
 

@@ -76,7 +76,7 @@ struct ScreenRead: ParsableCommand {
             let maxResults = 100
             var seenPIDs = Set<Int32>()
 
-            for app in resolver.listWindows() {
+            for app in try resolver.listWindows() {
                 if results.count >= maxResults { break }
                 guard seenPIDs.insert(app.pid).inserted else { continue }
 
@@ -110,7 +110,7 @@ struct ScreenRead: ParsableCommand {
 
         // Handle --list
         if list {
-            let windows = resolver.listWindows()
+            let windows = try resolver.listWindows()
             if json {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

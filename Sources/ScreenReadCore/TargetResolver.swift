@@ -9,7 +9,10 @@ public final class TargetResolver: Sendable {
 
     // MARK: - List Windows
 
-    public func listWindows() -> [WindowInfo] {
+    public func listWindows() throws -> [WindowInfo] {
+        guard AXIsProcessTrusted() else {
+            throw ScreenReadError.noAccessibilityPermission
+        }
         var results: [WindowInfo] = []
         for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
             guard let appName = app.localizedName else { continue }
@@ -113,6 +116,9 @@ public final class TargetResolver: Sendable {
     // MARK: - Get First Window of App Element
 
     public func firstWindow(_ appElement: AXUIElement, appName: String = "unknown") throws -> AXUIElement {
+        guard AXIsProcessTrusted() else {
+            throw ScreenReadError.noAccessibilityPermission
+        }
         guard let windows = getAXWindows(appElement), let first = windows.first else {
             throw ScreenReadError.noWindows(appName)
         }
