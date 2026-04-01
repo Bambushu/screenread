@@ -27,6 +27,16 @@ But ~90% of agent tasks are text-based: "what does the error say?", "is this but
 
 ScreenRead skips all of that. It asks macOS directly: "What UI elements exist in this window?" and returns structured text instantly.
 
+| | Screenshots | ScreenRead |
+|---|---|---|
+| **Speed** | 1-3 seconds | ~100ms |
+| **Token cost** | High (vision model) | Low (text) |
+| **Accuracy** | Can hallucinate text | Exact (reads from OS) |
+| **Scope** | Web only (Playwright) or full screen | Any macOS app |
+| **Good for** | Visual checks (layout, colors) | Content verification, UI state |
+
+Use ScreenRead for the 90% of tasks that are about content and structure. Keep screenshots for the 10% that need pixels.
+
 ## Install
 
 ### Build from source
@@ -204,18 +214,6 @@ screenread/
 ```
 
 The core library (`ScreenReadCore`) does all the work. Both the CLI and MCP server are thin wrappers around it.
-
-## Screenshots vs ScreenRead
-
-| | Screenshots | ScreenRead |
-|---|---|---|
-| **Speed** | 1-3 seconds | ~100ms |
-| **Token cost** | High (vision model) | Low (text) |
-| **Accuracy** | Can hallucinate text | Exact (reads from OS) |
-| **Scope** | Web only (Playwright) or full screen | Any macOS app |
-| **Good for** | Visual checks (layout, colors) | Content verification, UI state |
-
-Use ScreenRead for the 90% of tasks that are about content and structure. Keep screenshots for the 10% that need pixels.
 
 ## Platform
 
