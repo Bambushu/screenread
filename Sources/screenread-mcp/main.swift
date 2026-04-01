@@ -65,6 +65,123 @@ struct AnyCodable: Decodable {
 
 // MARK: - Response Helpers
 
+enum MCPTransportError: Error {
+    case invalidUTF8
+    case invalidHeader(String)
+    case missingContentLength
+    case invalidContentLength(String)
+    case unexpectedEOF
+}
+
+final class StdioMessageTransport {
+    private let input: FileHandle
+    private let output: FileHandle
+    private var inputBuffer = Data()
+
+    init(
+        input: FileHandle = .standardInput,
+        output: FileHandle = .standardOutput
+    ) {
+        self.input = input
+        self.output = output
+    }
+
+    func readMessage() throws -> Data? {
+        var contentLength: Int?
+
+        while true {
+            guard let line = try readHeaderLine() else {
+                if contentLength == nil {
+                    return nil
+                }
+                throw MCPTransportError.unexpectedEOF
+            }
+
+            if line.isEmpty {
+                break
+            }
+
+            let parts = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2 else {
+                throw MCPTransportError.invalidHeader(line)
+            }
+
+            let name = parts[0].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = parts[1].trimmingCharacters(in: .whitespaces)
+
+            if name == "content-length" {
+                guard let parsed = Int(value), parsed >= 0 else {
+                    throw MCPTransportError.invalidContentLength(value)
+                }
+                contentLength = parsed
+            }
+        }
+
+        guard let contentLength else {
+            throw MCPTransportError.missingContentLength
+        }
+
+        return try readExactly(count: contentLength)
+    }
+
+    func writeMessage(_ data: Data) {
+        let header = "Content-Length: \(data.count)\r\n\r\n"
+        if let headerData = header.data(using: .utf8) {
+            output.write(headerData)
+        }
+        output.write(data)
+        fflush(stdout)
+    }
+
+    private func readHeaderLine() throws -> String? {
+        while true {
+            if let newlineIndex = inputBuffer.firstIndex(of: 0x0A) {
+                let lineData = inputBuffer.prefix(upTo: newlineIndex)
+                inputBuffer.removeSubrange(...newlineIndex)
+
+                var normalized = Data(lineData)
+                if normalized.last == 0x0D {
+                    normalized.removeLast()
+                }
+
+                guard let line = String(data: normalized, encoding: .utf8) else {
+                    throw MCPTransportError.invalidUTF8
+                }
+                return line
+            }
+
+            guard try readIntoBuffer() else {
+                if inputBuffer.isEmpty {
+                    return nil
+                }
+                throw MCPTransportError.unexpectedEOF
+            }
+        }
+    }
+
+    private func readExactly(count: Int) throws -> Data {
+        while inputBuffer.count < count {
+            guard try readIntoBuffer() else {
+                throw MCPTransportError.unexpectedEOF
+            }
+        }
+
+        let data = inputBuffer.prefix(count)
+        inputBuffer.removeFirst(count)
+        return Data(data)
+    }
+
+    private func readIntoBuffer() throws -> Bool {
+        guard let chunk = try input.read(upToCount: 4096), !chunk.isEmpty else {
+            return false
+        }
+        inputBuffer.append(chunk)
+        return true
+    }
+}
+
+nonisolated(unsafe) let stdioTransport = StdioMessageTransport()
+
 func sendResponse(_ id: AnyCodableID?, _ result: Any) {
     var response: [String: Any] = ["jsonrpc": "2.0"]
     if let id = id {
@@ -97,15 +214,13 @@ func sendToolResult(_ id: AnyCodableID?, text: String, isError: Bool = false) {
 }
 
 func sendJSON(_ dict: [String: Any]) {
-    guard let data = try? JSONSerialization.data(withJSONObject: dict),
-          let str = String(data: data, encoding: .utf8) else {
-        // Fallback: don't silently drop — send a minimal error so the client doesn't hang
-        print("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal serialization error\"}}")
-        fflush(stdout)
+    guard let data = try? JSONSerialization.data(withJSONObject: dict) else {
+        if let fallback = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal serialization error\"}}".data(using: .utf8) {
+            stdioTransport.writeMessage(fallback)
+        }
         return
     }
-    print(str)
-    fflush(stdout)
+    stdioTransport.writeMessage(data)
 }
 
 // MARK: - Tool Definitions
@@ -439,8 +554,16 @@ func executeWatch(_ params: [String: AnyCodable]?) -> ToolResult {
 
 // MARK: - Main Loop
 
-while let line = readLine() {
-    guard let data = line.data(using: .utf8) else { continue }
+while true {
+    let data: Data
+    do {
+        guard let message = try stdioTransport.readMessage() else { break }
+        data = message
+    } catch {
+        sendError(nil, code: -32700, message: "Parse error")
+        continue
+    }
+
     guard let request = try? JSONDecoder().decode(JSONRPCRequest.self, from: data) else {
         sendError(nil, code: -32700, message: "Parse error")
         continue
