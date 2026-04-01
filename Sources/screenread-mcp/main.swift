@@ -3,66 +3,6 @@ import Foundation
 import ApplicationServices
 import ScreenReadCore
 
-// MARK: - JSON-RPC Types
-
-struct JSONRPCRequest: Decodable {
-    let jsonrpc: String
-    let id: AnyCodableID?
-    let method: String
-    let params: [String: AnyCodable]?
-}
-
-enum AnyCodableID: Decodable, Encodable {
-    case int(Int)
-    case string(String)
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let intVal = try? container.decode(Int.self) {
-            self = .int(intVal)
-        } else if let strVal = try? container.decode(String.self) {
-            self = .string(strVal)
-        } else {
-            throw DecodingError.typeMismatch(AnyCodableID.self, .init(codingPath: [], debugDescription: "Expected int or string"))
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .int(let v): try container.encode(v)
-        case .string(let v): try container.encode(v)
-        }
-    }
-}
-
-struct AnyCodable: Decodable {
-    let value: Any
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if container.decodeNil() {
-            value = NSNull()
-        } else if let bool = try? container.decode(Bool.self) {
-            value = bool
-        } else if let int = try? container.decode(Int.self) {
-            value = int
-        } else if let str = try? container.decode(String.self) {
-            value = str
-        } else if let arr = try? container.decode([AnyCodable].self) {
-            value = arr
-        } else if let dict = try? container.decode([String: AnyCodable].self) {
-            value = dict
-        } else {
-            value = NSNull()
-        }
-    }
-
-    var stringValue: String? { value as? String }
-    var intValue: Int? { value as? Int }
-    var boolValue: Bool? { value as? Bool }
-}
-
 // MARK: - Response Helpers
 
 enum MCPTransportError: Error {
@@ -182,39 +122,23 @@ final class StdioMessageTransport {
 
 nonisolated(unsafe) let stdioTransport = StdioMessageTransport()
 
-func sendResponse(_ id: AnyCodableID?, _ result: Any) {
-    var response: [String: Any] = ["jsonrpc": "2.0"]
-    if let id = id {
-        switch id {
-        case .int(let v): response["id"] = v
-        case .string(let v): response["id"] = v
-        }
-    }
-    response["result"] = result
+func sendResponse(_ id: JSONRPCID?, _ result: MCPValue) {
+    let response = ScreenReadMCPProtocol.makeSuccessResponse(id: id, result: result)
     sendJSON(response)
 }
 
-func sendError(_ id: AnyCodableID?, code: Int, message: String) {
-    var response: [String: Any] = ["jsonrpc": "2.0"]
-    if let id = id {
-        switch id {
-        case .int(let v): response["id"] = v
-        case .string(let v): response["id"] = v
-        }
-    }
-    response["error"] = ["code": code, "message": message] as [String: Any]
+func sendError(_ id: JSONRPCID?, code: Int, message: String) {
+    let response = ScreenReadMCPProtocol.makeErrorResponse(id: id, code: code, message: message)
     sendJSON(response)
 }
 
-func sendToolResult(_ id: AnyCodableID?, text: String, isError: Bool = false) {
-    sendResponse(id, [
-        "content": [["type": "text", "text": text]],
-        "isError": isError,
-    ] as [String: Any])
+func sendToolResult(_ id: JSONRPCID?, text: String, isError: Bool = false) {
+    sendResponse(id, ScreenReadMCPProtocol.makeToolResult(text: text, isError: isError))
 }
 
-func sendJSON(_ dict: [String: Any]) {
-    guard let data = try? JSONSerialization.data(withJSONObject: dict) else {
+func sendJSON(_ response: JSONRPCResponse) {
+    let encoded = ScreenReadMCPProtocol.encodeResponse(response)
+    guard let data = encoded.data(using: .utf8) else {
         if let fallback = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal serialization error\"}}".data(using: .utf8) {
             stdioTransport.writeMessage(fallback)
         }
@@ -223,79 +147,6 @@ func sendJSON(_ dict: [String: Any]) {
     stdioTransport.writeMessage(data)
 }
 
-// MARK: - Tool Definitions
-
-let tools: [[String: Any]] = [
-    [
-        "name": "screenread_snapshot",
-        "description": "Read the accessibility tree of a macOS window or application. With no parameters, reads the frontmost (active) app. Returns structured text of all UI elements.",
-        "inputSchema": [
-            "type": "object",
-            "properties": [
-                "app": ["type": "string", "description": "App name to read (e.g. 'Safari')"],
-                "window": ["type": "string", "description": "Fuzzy match on window title"],
-                "pid": ["type": "integer", "description": "Target by process ID"],
-                "depth": ["type": "integer", "description": "Max tree depth (default: 5). Use 0 for unlimited — may be slow on large apps."],
-                "textOnly": ["type": "boolean", "description": "Return only readable text, no structure"],
-                "roles": ["type": "string", "description": "Comma-separated AX roles to include (e.g. 'AXButton,AXLink,AXTextField')"],
-                "ignore": ["type": "string", "description": "Comma-separated AX roles to exclude (e.g. 'AXGroup,AXScrollArea,AXUnknown')"],
-            ] as [String: Any],
-            "additionalProperties": false,
-        ] as [String: Any],
-    ],
-    [
-        "name": "screenread_list",
-        "description": "List all open windows on macOS. Returns one line per window: 'AppName [PID] — Window Title'.",
-        "inputSchema": [
-            "type": "object",
-            "additionalProperties": false,
-        ] as [String: Any],
-    ],
-    [
-        "name": "screenread_find_text",
-        "description": "Search for visible text across all open windows. Plain text substring match (no regex). Returns matches with window context.",
-        "inputSchema": [
-            "type": "object",
-            "properties": [
-                "query": ["type": "string", "description": "Plain text substring to search for (no regex). Case-insensitive by default."],
-                "caseSensitive": ["type": "boolean", "description": "Case-sensitive search (default: false)"],
-            ] as [String: Any],
-            "required": ["query"],
-            "additionalProperties": false,
-        ] as [String: Any],
-    ],
-    [
-        "name": "screenread_clickable",
-        "description": "List interactive elements (buttons, links, text fields) with their click coordinates. Returns a table with role, label, center x/y, and state.",
-        "inputSchema": [
-            "type": "object",
-            "properties": [
-                "app": ["type": "string", "description": "App name to read (e.g. 'Safari')"],
-                "window": ["type": "string", "description": "Fuzzy match on window title"],
-                "pid": ["type": "integer", "description": "Target by process ID"],
-                "roles": ["type": "string", "description": "Override default interactive roles (e.g. 'AXButton,AXLink')"],
-            ] as [String: Any],
-            "additionalProperties": false,
-        ] as [String: Any],
-    ],
-    [
-        "name": "screenread_watch",
-        "description": "Watch an app for UI changes over a duration. Polls the accessibility tree at an interval and reports additions, removals, and value/state changes.",
-        "inputSchema": [
-            "type": "object",
-            "properties": [
-                "app": ["type": "string", "description": "App name to watch (e.g. 'Safari')"],
-                "window": ["type": "string", "description": "Fuzzy match on window title"],
-                "pid": ["type": "integer", "description": "Target by process ID"],
-                "duration": ["type": "integer", "description": "How long to watch in seconds (default: 10, max: 60)"],
-                "interval": ["type": "integer", "description": "Poll interval in seconds (default: 2, min: 1)"],
-                "textOnly": ["type": "boolean", "description": "Compare text content only (default: false)"],
-            ] as [String: Any],
-            "additionalProperties": false,
-        ] as [String: Any],
-    ],
-]
-
 // MARK: - Tool Execution
 
 struct ToolResult {
@@ -303,7 +154,7 @@ struct ToolResult {
     let isError: Bool
 }
 
-func executeSnapshot(_ params: [String: AnyCodable]?) -> ToolResult {
+func executeSnapshot(_ params: [String: MCPValue]?) -> ToolResult {
     let resolver = TargetResolver()
 
     do {
@@ -353,7 +204,7 @@ func executeList() -> ToolResult {
     }
 }
 
-func executeFindText(_ params: [String: AnyCodable]?) -> ToolResult {
+func executeFindText(_ params: [String: MCPValue]?) -> ToolResult {
     guard let query = params?["query"]?.stringValue, !query.isEmpty else {
         return ToolResult(text: "Error: 'query' parameter is required and must not be empty", isError: true)
     }
@@ -418,7 +269,7 @@ func executeFindText(_ params: [String: AnyCodable]?) -> ToolResult {
     return ToolResult(text: output, isError: false)
 }
 
-func executeClickable(_ params: [String: AnyCodable]?) -> ToolResult {
+func executeClickable(_ params: [String: MCPValue]?) -> ToolResult {
     let resolver = TargetResolver()
 
     do {
@@ -455,7 +306,7 @@ func executeClickable(_ params: [String: AnyCodable]?) -> ToolResult {
     }
 }
 
-func executeWatch(_ params: [String: AnyCodable]?) -> ToolResult {
+func executeWatch(_ params: [String: MCPValue]?) -> ToolResult {
     let resolver = TargetResolver()
 
     let duration = min(params?["duration"]?.intValue ?? 10, 60)
@@ -569,52 +420,56 @@ while true {
         continue
     }
 
+    if let error = ScreenReadMCPProtocol.validateRequest(request) {
+        sendError(request.id, code: error.code, message: error.message)
+        continue
+    }
+
     switch request.method {
     case "initialize":
-        sendResponse(request.id, [
-            "protocolVersion": "2025-11-25",
-            "capabilities": ["tools": ["listChanged": false]],
-            "serverInfo": ["name": "screenread", "version": "0.2.0"],
-        ] as [String: Any])
+        sendResponse(request.id, .object([
+            "protocolVersion": .string(ScreenReadMCPProtocol.protocolVersion),
+            "capabilities": .object([
+                "tools": .object([
+                    "listChanged": .bool(false),
+                ]),
+            ]),
+            "serverInfo": .object([
+                "name": .string("screenread"),
+                "version": .string("0.2.0"),
+            ]),
+        ]))
 
     case "notifications/initialized":
         break // no response
 
     case "tools/list":
-        sendResponse(request.id, ["tools": tools])
+        sendResponse(request.id, .object([
+            "tools": .array(ScreenReadMCPProtocol.toolDefinitions.map(\.jsonValue)),
+        ]))
 
     case "tools/call":
-        let toolName = (request.params?["name"]?.stringValue) ?? ""
-        let argsDict: [String: AnyCodable]? = {
-            guard let args = request.params?["arguments"] else { return nil }
-            if let typed = args.value as? [String: AnyCodable] { return typed }
-            // Fallback: re-decode from raw dict (handles [String: Any] case)
-            if let raw = args.value as? [String: Any],
-               let data = try? JSONSerialization.data(withJSONObject: raw),
-               let decoded = try? JSONDecoder().decode([String: AnyCodable].self, from: data) {
-                return decoded
+        switch ScreenReadMCPProtocol.decodeToolCall(from: request.params) {
+        case .failure(let error):
+            sendError(request.id, code: error.code, message: error.message)
+        case .success(let toolCall):
+            switch toolCall.tool {
+            case .snapshot:
+                let result = executeSnapshot(toolCall.arguments)
+                sendToolResult(request.id, text: result.text, isError: result.isError)
+            case .list:
+                let result = executeList()
+                sendToolResult(request.id, text: result.text, isError: result.isError)
+            case .findText:
+                let result = executeFindText(toolCall.arguments)
+                sendToolResult(request.id, text: result.text, isError: result.isError)
+            case .clickable:
+                let result = executeClickable(toolCall.arguments)
+                sendToolResult(request.id, text: result.text, isError: result.isError)
+            case .watch:
+                let result = executeWatch(toolCall.arguments)
+                sendToolResult(request.id, text: result.text, isError: result.isError)
             }
-            return nil
-        }()
-
-        switch toolName {
-        case "screenread_snapshot":
-            let result = executeSnapshot(argsDict)
-            sendToolResult(request.id, text: result.text, isError: result.isError)
-        case "screenread_list":
-            let result = executeList()
-            sendToolResult(request.id, text: result.text, isError: result.isError)
-        case "screenread_find_text":
-            let result = executeFindText(argsDict)
-            sendToolResult(request.id, text: result.text, isError: result.isError)
-        case "screenread_clickable":
-            let result = executeClickable(argsDict)
-            sendToolResult(request.id, text: result.text, isError: result.isError)
-        case "screenread_watch":
-            let result = executeWatch(argsDict)
-            sendToolResult(request.id, text: result.text, isError: result.isError)
-        default:
-            sendError(request.id, code: -32601, message: "Unknown tool: \(toolName)")
         }
 
     default:
