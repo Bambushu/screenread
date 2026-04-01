@@ -192,12 +192,13 @@ screenread/
 │   │   ├── AXHelpers.swift       # Shared AX attribute accessors
 │   │   ├── AXTreeWalker.swift    # Recursive accessibility tree traversal + streaming callback
 │   │   ├── Formatter.swift       # Text tree, text-only, JSON, clickable output
+│   │   ├── MCPProtocol.swift     # JSON-RPC types, tool dispatch, parameter validation
 │   │   ├── StreamFormatter.swift # JSONL single-node encoder
 │   │   ├── TargetResolver.swift  # App/window/PID resolution with fuzzy matching
 │   │   ├── TreeDiffer.swift      # Compare two tree snapshots for changes
 │   │   └── Types.swift           # AXNode, WalkResult, WindowInfo, errors
 │   ├── screenread/         # CLI (uses ArgumentParser)
-│   └── screenread-mcp/     # MCP server (JSON-RPC over stdio)
+│   └── screenread-mcp/     # MCP server (Content-Length framed stdio)
 └── Tests/
     └── ScreenReadCoreTests/  # 27 tests across 4 suites
 ```
